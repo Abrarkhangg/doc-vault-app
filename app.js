@@ -1,5 +1,5 @@
 /**
- * Custom Document Vault - Main Application Engine (ShoaibVault GitHub Cloud Edition)
+ * Custom Document Vault - Main Application Engine (ShoaibVault Live Cloud Engine)
  */
 
 class DocumentVaultApp {
@@ -73,9 +73,9 @@ class DocumentVaultApp {
       if (pinVal === savedPin) {
         errDiv.style.display = 'none';
         unlockBtn.disabled = true;
-        unlockBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing from GitHub Cloud...';
+        unlockBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning files from Abrarkhangg/Officeletters...';
 
-        // Load live letters from GitHub Private Repository
+        // Auto-discover & load ALL real files directly from Abrarkhangg/Officeletters
         if (window.githubSync.isConfigured()) {
           try {
             const remoteData = await window.githubSync.fetchMetadata();
@@ -87,7 +87,7 @@ class DocumentVaultApp {
               this.saveToStorage();
             }
           } catch (e) {
-            console.warn('GitHub fetch error on startup:', e);
+            console.warn('GitHub auto-scan error on startup:', e);
           }
         }
 
@@ -97,7 +97,7 @@ class DocumentVaultApp {
         unlockBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Vault';
         input.value = '';
         
-        // Render UI with clean GitHub cloud data
+        // Render UI with live scanned GitHub files
         this.renderFolders();
         this.renderView();
         this.updateStats();
@@ -367,7 +367,7 @@ class DocumentVaultApp {
       }
     });
 
-    // GitHub Connection Test & Remote Sync
+    // GitHub Connection Test & Remote Scan Trigger
     document.getElementById('btn-test-gh').addEventListener('click', async () => {
       const token = document.getElementById('gh-token').value;
       const repo = document.getElementById('gh-repo').value || 'Abrarkhangg/Officeletters';
@@ -375,7 +375,7 @@ class DocumentVaultApp {
 
       const resDiv = document.getElementById('gh-test-result');
       resDiv.style.display = 'block';
-      resDiv.innerHTML = '<span style="color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Testing connection to GitHub...</span>';
+      resDiv.innerHTML = '<span style="color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Connecting & Scanning files in Abrarkhangg/Officeletters...</span>';
 
       const res = await window.githubSync.testConnection();
       if (res.success) {
@@ -383,7 +383,13 @@ class DocumentVaultApp {
         this.updateSyncBadge();
 
         try {
-          await window.githubSync.syncMetadata(this.documents, this.folders);
+          const remoteData = await window.githubSync.fetchMetadata();
+          if (remoteData && Array.isArray(remoteData.documents)) {
+            this.documents = remoteData.documents;
+            this.saveToStorage();
+            this.renderDocuments();
+            this.updateStats();
+          }
         } catch (err) {}
       } else {
         resDiv.innerHTML = `<span style="color: var(--accent-rose); font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${res.message}</span>`;
@@ -502,8 +508,11 @@ class DocumentVaultApp {
       if (window.githubSync.isConfigured()) {
         try {
           const ghPath = `letters/${newDoc.id}_${newDoc.fileName}`;
-          await window.githubSync.uploadFile(ghPath, fileData, `Add letter: ${newDoc.title}`);
+          const res = await window.githubSync.uploadFile(ghPath, fileData, `Add letter: ${newDoc.title}`);
           newDoc.ghPath = ghPath;
+          if (res && res.content && res.content.sha) {
+            newDoc.sha = res.content.sha;
+          }
           await window.githubSync.syncMetadata(this.documents, this.folders);
           this.saveToStorage();
         } catch (err) {
@@ -517,7 +526,7 @@ class DocumentVaultApp {
       this.closeModal('upload-modal');
       document.getElementById('upload-form').reset();
       document.getElementById('selected-file-info').style.display = 'none';
-      this.showToast('Letter saved & synced successfully!');
+      this.showToast('Letter saved & uploaded to GitHub!');
     };
 
     reader.readAsDataURL(file);
@@ -578,6 +587,14 @@ class DocumentVaultApp {
     const folderId = this.pendingDeleteFolderId;
     const folder = this.folders.find(f => f.id === folderId);
     const folderName = folder ? folder.name : 'Folder';
+
+    // Delete documents inside folder directly from GitHub repo if sha/path available
+    const docsToDelete = this.documents.filter(d => d.folderId === folderId);
+    for (const doc of docsToDelete) {
+      if (doc.ghPath && doc.sha) {
+        await window.githubSync.deleteFileFromGitHub(doc.ghPath, doc.sha);
+      }
+    }
 
     this.folders = this.folders.filter(f => f.id !== folderId);
     this.documents = this.documents.filter(d => d.folderId !== folderId);
@@ -927,6 +944,11 @@ ${doc.tags.length > 0 ? 'Tags: #' + doc.tags.join(' #') : ''}`;
       const doc = this.documents.find(d => d.id === id);
       const title = doc ? doc.title : 'Letter';
 
+      // Physically delete file from GitHub repository if path/sha present
+      if (doc && doc.ghPath && doc.sha) {
+        await window.githubSync.deleteFileFromGitHub(doc.ghPath, doc.sha);
+      }
+
       this.documents = this.documents.filter(d => d.id !== id);
       this.saveToStorage();
 
@@ -970,28 +992,6 @@ ${doc.tags.length > 0 ? 'Tags: #' + doc.tags.join(' #') : ''}`;
 
   closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
-  }
-
-  createSamplePdfDataUri() {
-    return 'data:application/pdf;base64,JVBERi0xLjQKJSDi48jNCiAxIDAgb2JqCjw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+CmVuZG9iaiAyIDAgb2JqCjw8L1R5cGUvUGFnZXMvQ291bnQgMS9LaWRzWzMgMCBSXT4+CmVuZG9iaiAzIDAgb2JqCjw8L1R5cGUvUGFnZS9QYXJlbnQgMiAwIFIvTWVkaWFCb3hbMCAwIDYxMiA3OTJdL0NvbnRlbnRzIDQgMCBSPj4KZW5kb2JqIDQgMCBvYmoKPDwvTGVuZ3RoIDU0Pj5zdHJlYW0KQlQKL0YxIDI0IFRmCjEwMCA3MDAgVGQKKE9GRklDSUFMIExFVFRFUiBERU1PIFBERikgVGoKRVQKZW5kc3RyZWFtCmVuZG9iagp0cmFpbGVyCjw8L1R5cGUvUGFnZS9QYXJlbnQgMiAwIFI+PgolJUVPRg==';
-  }
-
-  createSampleImageSvgDataUri(title) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">
-      <rect width="100%" height="100%" fill="#ffffff"/>
-      <rect x="40" y="40" width="720" height="920" fill="#f8fafc" stroke="#2563eb" stroke-width="2" rx="10"/>
-      <text x="400" y="120" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#0f172a" text-anchor="middle">OFFICIAL DOCUMENT SCAN</text>
-      <line x1="80" y1="160" x2="720" y2="160" stroke="#e2e8f0" stroke-width="2"/>
-      <text x="400" y="240" font-family="Arial, sans-serif" font-size="22" fill="#2563eb" text-anchor="middle">${title}</text>
-      <text x="100" y="320" font-family="Arial, sans-serif" font-size="16" fill="#475569">Date: August 24, 2026</text>
-      <text x="100" y="360" font-family="Arial, sans-serif" font-size="16" fill="#475569">Ref No: GOVT-DOC/2026/SEC-99</text>
-      <rect x="100" y="420" width="600" height="300" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" rx="8"/>
-      <text x="120" y="460" font-family="Arial, sans-serif" font-size="14" fill="#0f172a">[ Scanned Copy of Office Letter ]</text>
-      <text x="120" y="500" font-family="Arial, sans-serif" font-size="14" fill="#475569">This document is verified and archived in ShoaibVault.</text>
-      <circle cx="620" cy="800" r="50" fill="none" stroke="#0d9488" stroke-width="4"/>
-      <text x="620" y="805" font-family="Arial, sans-serif" font-size="14" fill="#0d9488" text-anchor="middle">VERIFIED</text>
-    </svg>`;
-    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
 }
 
