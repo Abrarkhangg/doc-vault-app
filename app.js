@@ -1,5 +1,5 @@
 /**
- * Custom Document Vault - Main Application Engine (ShoaibVault Light Theme)
+ * Custom Document Vault - Main Application Engine (ShoaibVault GitHub Cloud Edition)
  */
 
 class DocumentVaultApp {
@@ -12,8 +12,7 @@ class DocumentVaultApp {
     ];
 
     this.documents = JSON.parse(localStorage.getItem('docvault_documents')) || [];
-    this.isInitialized = localStorage.getItem('docvault_initialized') === 'true';
-    this.activeFolder = 'dashboard_overview'; // Default tab: Dashboard Overview
+    this.activeFolder = 'dashboard_overview';
     this.activeTypeFilter = 'all';
     this.dateFrom = '';
     this.dateTo = '';
@@ -21,7 +20,7 @@ class DocumentVaultApp {
     this.sortOrder = 'date-desc';
     this.viewMode = 'grid';
 
-    // Viewer modal & Delete state
+    // Viewer & Delete state
     this.viewerZoom = 1;
     this.viewerRotation = 0;
     this.activeViewerDoc = null;
@@ -31,61 +30,8 @@ class DocumentVaultApp {
   }
 
   init() {
-    // Only inject demo data once on very first install
-    if (!this.isInitialized && this.documents.length === 0) {
-      this.injectDemoData();
-      localStorage.setItem('docvault_initialized', 'true');
-    }
-
     this.setupEventListeners();
     this.checkSecurityLock();
-  }
-
-  injectDemoData() {
-    const demoDocs = [
-      {
-        id: 'doc_demo_1',
-        title: 'Ministry Office Allocation Notice 2026',
-        letterDate: '2026-06-15',
-        createdAt: '2026-06-16T10:30:00.000Z',
-        folderId: 'official',
-        tags: ['Government', 'Notice', 'Urgent'],
-        notes: 'Ref No: GOVT/OFF/2026/894. Office floor 4 assignment.',
-        fileType: 'pdf',
-        fileName: 'Ministry_Notice_2026.pdf',
-        fileSize: 450000,
-        fileData: this.createSamplePdfDataUri()
-      },
-      {
-        id: 'doc_demo_2',
-        title: 'Building Lease Extension Agreement',
-        letterDate: '2026-03-01',
-        createdAt: '2026-03-02T14:15:00.000Z',
-        folderId: 'contracts',
-        tags: ['Lease', 'Legal', 'Commercial'],
-        notes: 'Signed 3-year extension with Plaza Landlords.',
-        fileType: 'image',
-        fileName: 'Lease_Agreement_Page1.png',
-        fileSize: 320000,
-        fileData: this.createSampleImageSvgDataUri('LEASE AGREEMENT 2026')
-      },
-      {
-        id: 'doc_demo_3',
-        title: 'Q2 Office Supplies & Furniture Invoice',
-        letterDate: '2026-07-20',
-        createdAt: '2026-07-21T09:00:00.000Z',
-        folderId: 'finance',
-        tags: ['Invoice', 'Vendor', 'Paid'],
-        notes: 'Invoice #INV-9942 - Total PKR 145,000.',
-        fileType: 'image',
-        fileName: 'Vendor_Invoice_Q2.jpg',
-        fileSize: 280000,
-        fileData: this.createSampleImageSvgDataUri('OFFICE INVOICE #9942')
-      }
-    ];
-
-    this.documents = demoDocs;
-    this.saveToStorage();
   }
 
   saveToStorage() {
@@ -101,7 +47,7 @@ class DocumentVaultApp {
     const lockSubtitle = document.getElementById('lock-subtitle');
     const unlockBtn = document.getElementById('unlock-btn');
 
-    // Strict Lockout: Hide app completely until correct PIN is verified
+    // Strict Lockout: App stays hidden until PIN is verified
     mainApp.style.display = 'none';
     lockScreen.style.display = 'flex';
 
@@ -116,20 +62,42 @@ class DocumentVaultApp {
     }
   }
 
-  handleUnlock() {
+  async handleUnlock() {
     const input = document.getElementById('pin-input');
     const savedPin = localStorage.getItem('docvault_pin');
     const errDiv = document.getElementById('pin-error');
+    const unlockBtn = document.getElementById('unlock-btn');
     const pinVal = input.value.trim();
 
     if (savedPin) {
       if (pinVal === savedPin) {
+        errDiv.style.display = 'none';
+        unlockBtn.disabled = true;
+        unlockBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing from GitHub Cloud...';
+
+        // Load live letters from GitHub Private Repository
+        if (window.githubSync.isConfigured()) {
+          try {
+            const remoteData = await window.githubSync.fetchMetadata();
+            if (remoteData && Array.isArray(remoteData.documents)) {
+              this.documents = remoteData.documents;
+              if (Array.isArray(remoteData.folders) && remoteData.folders.length > 0) {
+                this.folders = remoteData.folders;
+              }
+              this.saveToStorage();
+            }
+          } catch (e) {
+            console.warn('GitHub fetch error on startup:', e);
+          }
+        }
+
         document.getElementById('lock-screen').style.display = 'none';
         document.getElementById('app').style.display = 'flex';
-        errDiv.style.display = 'none';
+        unlockBtn.disabled = false;
+        unlockBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Vault';
         input.value = '';
         
-        // Render UI after successful PIN verification
+        // Render UI with clean GitHub cloud data
         this.renderFolders();
         this.renderView();
         this.updateStats();
@@ -152,7 +120,7 @@ class DocumentVaultApp {
         this.updateSyncBadge();
         this.showToast('Master PIN set & Vault unlocked!');
       } else {
-        errDiv.textContent = 'PIN code must be exactly 4 digits.';
+        errDiv.textContent = 'PIN code must be 4 digits.';
         errDiv.style.display = 'block';
       }
     }
@@ -207,7 +175,7 @@ class DocumentVaultApp {
     document.getElementById('btn-add-folder').addEventListener('click', () => {
       this.openModal('folder-modal');
     });
-    document.getElementById('folder-form').addEventListener('submit', (e) => {
+    document.getElementById('folder-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const input = document.getElementById('folder-name-input');
       const folderName = input.value.trim();
@@ -226,11 +194,20 @@ class DocumentVaultApp {
         };
         this.folders.push(newFolder);
         this.saveToStorage();
+
+        if (window.githubSync.isConfigured()) {
+          try {
+            await window.githubSync.syncMetadata(this.documents, this.folders);
+          } catch (err) {
+            console.warn('GitHub folder sync error:', err);
+          }
+        }
+
         this.renderFolders();
         this.updateFolderSelectDropdown();
         this.closeModal('folder-modal');
         input.value = '';
-        this.showToast(`Folder "${folderName}" created successfully!`);
+        this.showToast(`Folder "${folderName}" created & synced!`);
       }
     });
 
@@ -364,17 +341,16 @@ class DocumentVaultApp {
     // Settings Modal
     document.getElementById('btn-settings').addEventListener('click', () => {
       document.getElementById('gh-token').value = window.githubSync.token;
-      document.getElementById('gh-repo').value = window.githubSync.repo;
+      document.getElementById('gh-repo').value = window.githubSync.repo || 'Abrarkhangg/Officeletters';
       document.getElementById('new-pin').value = localStorage.getItem('docvault_pin') || '';
       this.openModal('settings-modal');
     });
 
     // Reset & Wipe All Demo Data Trigger
     document.getElementById('btn-wipe-data').addEventListener('click', async () => {
-      if (confirm('Are you sure you want to delete all demo letters? This will clean up your vault.')) {
+      if (confirm('Are you sure you want to delete all letters? This will clean up your vault.')) {
         this.documents = [];
         this.saveToStorage();
-        localStorage.setItem('docvault_initialized', 'true');
 
         if (window.githubSync.isConfigured()) {
           try {
@@ -387,14 +363,14 @@ class DocumentVaultApp {
         this.renderDocuments();
         this.updateStats();
         this.closeModal('settings-modal');
-        this.showToast('All demo letters cleared.');
+        this.showToast('All letters cleared.');
       }
     });
 
     // GitHub Connection Test & Remote Sync
     document.getElementById('btn-test-gh').addEventListener('click', async () => {
       const token = document.getElementById('gh-token').value;
-      const repo = document.getElementById('gh-repo').value;
+      const repo = document.getElementById('gh-repo').value || 'Abrarkhangg/Officeletters';
       window.githubSync.saveCredentials(token, repo);
 
       const resDiv = document.getElementById('gh-test-result');
@@ -405,6 +381,10 @@ class DocumentVaultApp {
       if (res.success) {
         resDiv.innerHTML = `<span style="color: var(--accent-teal); font-weight:600;"><i class="fa-solid fa-check-circle"></i> Connected to ${res.name} (${res.isPrivate ? 'Private Repo' : 'Public Repo'})</span>`;
         this.updateSyncBadge();
+
+        try {
+          await window.githubSync.syncMetadata(this.documents, this.folders);
+        } catch (err) {}
       } else {
         resDiv.innerHTML = `<span style="color: var(--accent-rose); font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${res.message}</span>`;
       }
@@ -432,8 +412,6 @@ class DocumentVaultApp {
       if (pinVal.length === 4 && /^\d+$/.test(pinVal)) {
         localStorage.setItem('docvault_pin', pinVal);
         alert('Security PIN updated successfully.');
-      } else if (pinVal === '') {
-        alert('PIN cannot be empty.');
       } else {
         alert('PIN must be exactly 4 digits.');
       }
@@ -601,7 +579,6 @@ class DocumentVaultApp {
     const folder = this.folders.find(f => f.id === folderId);
     const folderName = folder ? folder.name : 'Folder';
 
-    // Delete folder AND permanently delete all documents inside this folder
     this.folders = this.folders.filter(f => f.id !== folderId);
     this.documents = this.documents.filter(d => d.folderId !== folderId);
 
@@ -611,7 +588,6 @@ class DocumentVaultApp {
 
     this.saveToStorage();
 
-    // Auto-sync deleted state to GitHub
     if (window.githubSync.isConfigured()) {
       try {
         await window.githubSync.syncMetadata(this.documents, this.folders);
@@ -954,7 +930,6 @@ ${doc.tags.length > 0 ? 'Tags: #' + doc.tags.join(' #') : ''}`;
       this.documents = this.documents.filter(d => d.id !== id);
       this.saveToStorage();
 
-      // Auto-sync deleted state to GitHub index
       if (window.githubSync.isConfigured()) {
         try {
           await window.githubSync.syncMetadata(this.documents, this.folders);
@@ -966,7 +941,7 @@ ${doc.tags.length > 0 ? 'Tags: #' + doc.tags.join(' #') : ''}`;
       this.renderDocuments();
       this.updateStats();
       this.renderFolders();
-      this.showToast(`"${title}" permanently deleted.`);
+      this.showToast(`"${title}" permanently deleted from GitHub.`);
     }
   }
 

@@ -1,20 +1,20 @@
 /**
- * Custom Document Vault - GitHub Private Repository API Integration
- * Enables 100% free, unbanned, private document storage & sync across all devices.
+ * Custom Document Vault - GitHub Private Repository API Integration (ShoaibVault)
+ * Optimized for Abrarkhangg/Officeletters GitHub Cloud Backend
  */
 
 class GitHubSync {
   constructor() {
-    this.token = localStorage.getItem('docvault_gh_token') || '';
-    this.repo = localStorage.getItem('docvault_gh_repo') || ''; // format: "username/reponame"
+    this.repo = localStorage.getItem('docvault_gh_repo') || 'Abrarkhangg/Officeletters';
     this.branch = localStorage.getItem('docvault_gh_branch') || 'main';
+    this.token = localStorage.getItem('docvault_gh_token') || '';
   }
 
   isConfigured() {
-    return Boolean(this.token && this.repo && this.repo.includes('/'));
+    return Boolean(this.token && this.token.startsWith('ghp_') && this.repo && this.repo.includes('/'));
   }
 
-  saveCredentials(token, repo, branch = 'main') {
+  saveCredentials(token, repo = 'Abrarkhangg/Officeletters', branch = 'main') {
     this.token = token.trim();
     this.repo = repo.trim();
     this.branch = branch.trim() || 'main';
@@ -23,15 +23,8 @@ class GitHubSync {
     localStorage.setItem('docvault_gh_branch', this.branch);
   }
 
-  clearCredentials() {
-    this.token = '';
-    this.repo = '';
-    localStorage.removeItem('docvault_gh_token');
-    localStorage.removeItem('docvault_gh_repo');
-  }
-
   async testConnection() {
-    if (!this.isConfigured()) return { success: false, message: 'Token or Repository not set.' };
+    if (!this.isConfigured()) return { success: false, message: 'Token missing or invalid format.' };
 
     try {
       const response = await fetch(`https://api.github.com/repos/${this.repo}`, {
@@ -53,16 +46,12 @@ class GitHubSync {
     }
   }
 
-  /**
-   * Uploads or updates a document file to GitHub repository
-   */
   async uploadFile(path, base64Content, commitMessage = 'Add office letter document') {
-    if (!this.isConfigured()) throw new Error('GitHub API not configured');
+    if (!this.isConfigured()) throw new Error('GitHub PAT Token not configured');
 
     const cleanBase64 = base64Content.includes(',') ? base64Content.split(',')[1] : base64Content;
     const url = `https://api.github.com/repos/${this.repo}/contents/${encodeURIComponent(path)}`;
 
-    // Check if file already exists to get its SHA for update
     let sha = null;
     try {
       const getRes = await fetch(url, {
@@ -72,9 +61,7 @@ class GitHubSync {
         const fileInfo = await getRes.json();
         sha = fileInfo.sha;
       }
-    } catch (e) {
-      // file doesn't exist yet
-    }
+    } catch (e) {}
 
     const payload = {
       message: commitMessage,
@@ -102,9 +89,6 @@ class GitHubSync {
     return result.content.download_url || result.content.html_url;
   }
 
-  /**
-   * Syncs metadata index JSON to GitHub
-   */
   async syncMetadata(documentsList, foldersList) {
     if (!this.isConfigured()) return;
     const indexData = {
@@ -117,28 +101,30 @@ class GitHubSync {
         createdAt: doc.createdAt,
         folderId: doc.folderId,
         tags: doc.tags,
+        notes: doc.notes || '',
         fileType: doc.fileType,
         fileName: doc.fileName,
         fileSize: doc.fileSize,
+        fileData: doc.fileData,
         ghPath: doc.ghPath || `letters/${doc.id}_${doc.fileName}`
       }))
     };
 
-    const jsonStr = JSON.stringify(indexData, null, 2);
+    const jsonStr = JSON.stringify(indexData);
     const base64Index = btoa(unescape(encodeURIComponent(jsonStr)));
-    await this.uploadFile('documents-index.json', base64Index, 'Sync documents index');
+    await this.uploadFile('documents-index.json', base64Index, 'Update ShoaibVault letters index');
   }
 
-  /**
-   * Fetches remote metadata index from GitHub
-   */
   async fetchMetadata() {
     if (!this.isConfigured()) return null;
-    const url = `https://api.github.com/repos/${this.repo}/contents/documents-index.json?ref=${this.branch}`;
+    const url = `https://api.github.com/repos/${this.repo}/contents/documents-index.json?ref=${this.branch}&t=${Date.now()}`;
 
     try {
       const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${this.token}` }
+        headers: { 
+          'Authorization': `Bearer ${this.token}`,
+          'Cache-Control': 'no-cache'
+        }
       });
       if (!res.ok) return null;
 
@@ -146,7 +132,7 @@ class GitHubSync {
       const content = decodeURIComponent(escape(atob(fileData.content.replace(/\s/g, ''))));
       return JSON.parse(content);
     } catch (e) {
-      console.warn('Failed to fetch remote metadata:', e);
+      console.warn('Failed to fetch remote metadata from GitHub:', e);
       return null;
     }
   }
