@@ -12,6 +12,7 @@ class DocumentVaultApp {
     ];
 
     this.documents = JSON.parse(localStorage.getItem('docvault_documents')) || [];
+    this.isInitialized = localStorage.getItem('docvault_initialized') === 'true';
     this.activeFolder = 'dashboard_overview'; // Default tab: Dashboard Overview
     this.activeTypeFilter = 'all';
     this.dateFrom = '';
@@ -30,8 +31,10 @@ class DocumentVaultApp {
   }
 
   init() {
-    if (this.documents.length === 0) {
+    // Only inject demo data once on first install
+    if (!this.isInitialized && this.documents.length === 0) {
       this.injectDemoData();
+      localStorage.setItem('docvault_initialized', 'true');
     }
 
     this.setupEventListeners();
@@ -97,10 +100,49 @@ class DocumentVaultApp {
   checkSecurityLock() {
     const pin = localStorage.getItem('docvault_pin');
     const lockScreen = document.getElementById('lock-screen');
+    const lockTitle = document.getElementById('lock-title');
+    const lockSubtitle = document.getElementById('lock-subtitle');
+    const unlockBtn = document.getElementById('unlock-btn');
+
+    lockScreen.style.display = 'flex'; // Mandatory lock screen on app start
+
     if (pin) {
-      lockScreen.style.display = 'flex';
+      lockTitle.textContent = 'ShoaibVault';
+      lockSubtitle.textContent = 'Enter your 4-digit PIN to access office letters';
+      unlockBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Vault';
     } else {
-      lockScreen.style.display = 'none';
+      lockTitle.textContent = 'Set Master PIN';
+      lockSubtitle.textContent = 'Create a 4-digit Security PIN to lock & protect your Vault';
+      unlockBtn.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Set Master PIN';
+    }
+  }
+
+  handleUnlock() {
+    const input = document.getElementById('pin-input');
+    const savedPin = localStorage.getItem('docvault_pin');
+    const errDiv = document.getElementById('pin-error');
+    const pinVal = input.value.trim();
+
+    if (savedPin) {
+      if (pinVal === savedPin) {
+        document.getElementById('lock-screen').style.display = 'none';
+        errDiv.style.display = 'none';
+        input.value = '';
+      } else {
+        errDiv.textContent = 'Invalid PIN code. Try again.';
+        errDiv.style.display = 'block';
+      }
+    } else {
+      if (pinVal.length === 4 && /^\d+$/.test(pinVal)) {
+        localStorage.setItem('docvault_pin', pinVal);
+        document.getElementById('lock-screen').style.display = 'none';
+        errDiv.style.display = 'none';
+        input.value = '';
+        this.showToast('Master PIN set & Vault unlocked!');
+      } else {
+        errDiv.textContent = 'PIN code must be exactly 4 digits.';
+        errDiv.style.display = 'block';
+      }
     }
   }
 
@@ -304,12 +346,7 @@ class DocumentVaultApp {
 
     // Lock Button
     document.getElementById('btn-lock').addEventListener('click', () => {
-      if (!localStorage.getItem('docvault_pin')) {
-        alert('Please set up a 4-digit Security PIN first in Settings.');
-        this.openModal('settings-modal');
-      } else {
-        document.getElementById('lock-screen').style.display = 'flex';
-      }
+      this.checkSecurityLock();
     });
 
     // Settings Modal
@@ -320,7 +357,7 @@ class DocumentVaultApp {
       this.openModal('settings-modal');
     });
 
-    // GitHub Connection Test
+    // GitHub Connection Test & Remote Sync
     document.getElementById('btn-test-gh').addEventListener('click', async () => {
       const token = document.getElementById('gh-token').value;
       const repo = document.getElementById('gh-repo').value;
@@ -362,8 +399,7 @@ class DocumentVaultApp {
         localStorage.setItem('docvault_pin', pinVal);
         alert('Security PIN updated successfully.');
       } else if (pinVal === '') {
-        localStorage.removeItem('docvault_pin');
-        alert('PIN Lock disabled.');
+        alert('PIN cannot be empty.');
       } else {
         alert('PIN must be exactly 4 digits.');
       }
@@ -406,18 +442,6 @@ class DocumentVaultApp {
         setTimeout(() => { win.print(); win.close(); }, 500);
       }
     });
-  }
-
-  handleUnlock() {
-    const input = document.getElementById('pin-input');
-    const savedPin = localStorage.getItem('docvault_pin');
-    if (input.value === savedPin) {
-      document.getElementById('lock-screen').style.display = 'none';
-      document.getElementById('pin-error').style.display = 'none';
-      input.value = '';
-    } else {
-      document.getElementById('pin-error').style.display = 'block';
-    }
   }
 
   handleFileSelected(file) {
@@ -468,6 +492,7 @@ class DocumentVaultApp {
           const ghPath = `letters/${newDoc.id}_${newDoc.fileName}`;
           await window.githubSync.uploadFile(ghPath, fileData, `Add letter: ${newDoc.title}`);
           newDoc.ghPath = ghPath;
+          await window.githubSync.syncMetadata(this.documents, this.folders);
           this.saveToStorage();
         } catch (err) {
           console.warn('GitHub background upload warning:', err);
@@ -480,7 +505,7 @@ class DocumentVaultApp {
       this.closeModal('upload-modal');
       document.getElementById('upload-form').reset();
       document.getElementById('selected-file-info').style.display = 'none';
-      this.showToast('Letter saved successfully!');
+      this.showToast('Letter saved & synced successfully!');
     };
 
     reader.readAsDataURL(file);
@@ -493,12 +518,10 @@ class DocumentVaultApp {
     this.pendingDeleteFolderId = folderId;
     const fileCount = this.documents.filter(d => d.folderId === folderId).length;
 
-    // Populate warning modal elements
     document.getElementById('del-folder-warning-title').textContent = `Delete Folder "${folder.name}"?`;
     document.getElementById('del-folder-file-count-msg').innerHTML = 
       `⚠️ <b>Security Warning:</b> This folder contains <b style="color: var(--accent-rose);">${fileCount} letter document(s)</b>. Deleting this folder will permanently delete the category AND all ${fileCount} letter file(s) inside it!`;
     
-    // Check if security PIN is set up
     const savedPin = localStorage.getItem('docvault_pin');
     const pinInput = document.getElementById('delete-folder-pin-input');
     const pinLabel = document.getElementById('del-pin-label');
@@ -517,7 +540,7 @@ class DocumentVaultApp {
     this.openModal('delete-folder-modal');
   }
 
-  handleConfirmDeleteFolder() {
+  async handleConfirmDeleteFolder() {
     if (!this.pendingDeleteFolderId) return;
 
     const pinInput = document.getElementById('delete-folder-pin-input').value.trim();
@@ -553,12 +576,22 @@ class DocumentVaultApp {
     }
 
     this.saveToStorage();
+
+    // Auto-sync deleted state to GitHub
+    if (window.githubSync.isConfigured()) {
+      try {
+        await window.githubSync.syncMetadata(this.documents, this.folders);
+      } catch (e) {
+        console.warn('GitHub delete sync error:', e);
+      }
+    }
+
     this.renderFolders();
     this.renderView();
     this.updateStats();
     this.closeModal('delete-folder-modal');
     this.pendingDeleteFolderId = null;
-    this.showToast(`Folder "${folderName}" and all its files deleted.`);
+    this.showToast(`Folder "${folderName}" and files permanently deleted.`);
   }
 
   renderFolders() {
@@ -879,13 +912,27 @@ ${doc.tags.length > 0 ? 'Tags: #' + doc.tags.join(' #') : ''}`;
     }
   }
 
-  deleteDocument(id) {
-    if (confirm('Are you sure you want to delete this office letter?')) {
+  async deleteDocument(id) {
+    if (confirm('Are you sure you want to permanently delete this office letter?')) {
+      const doc = this.documents.find(d => d.id === id);
+      const title = doc ? doc.title : 'Letter';
+
       this.documents = this.documents.filter(d => d.id !== id);
       this.saveToStorage();
+
+      // Auto-sync deleted state to GitHub index
+      if (window.githubSync.isConfigured()) {
+        try {
+          await window.githubSync.syncMetadata(this.documents, this.folders);
+        } catch (e) {
+          console.warn('GitHub delete doc sync error:', e);
+        }
+      }
+
       this.renderDocuments();
       this.updateStats();
       this.renderFolders();
+      this.showToast(`"${title}" permanently deleted.`);
     }
   }
 
