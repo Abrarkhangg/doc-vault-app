@@ -1,6 +1,6 @@
 /**
  * Custom Document Vault - GitHub Private Repository API Integration (ShoaibVault)
- * Direct Repository Auto-Discovery & File Manager for Abrarkhangg/Officeletters
+ * Optimized for Abrarkhangg/Officeletters GitHub Cloud Backend
  */
 
 class GitHubSync {
@@ -11,20 +11,21 @@ class GitHubSync {
   }
 
   isConfigured() {
-    return Boolean(this.token && this.token.startsWith('ghp_') && this.repo && this.repo.includes('/'));
+    // Accepts any valid GitHub PAT format (ghp_..., github_pat_..., etc.)
+    return Boolean(this.token && this.token.length >= 15 && this.repo && this.repo.includes('/'));
   }
 
   saveCredentials(token, repo = 'Abrarkhangg/Officeletters', branch = 'main') {
-    this.token = token.trim();
-    this.repo = repo.trim();
-    this.branch = branch.trim() || 'main';
+    this.token = token ? token.trim() : '';
+    this.repo = repo ? repo.trim() : 'Abrarkhangg/Officeletters';
+    this.branch = branch ? branch.trim() : 'main';
     localStorage.setItem('docvault_gh_token', this.token);
     localStorage.setItem('docvault_gh_repo', this.repo);
     localStorage.setItem('docvault_gh_branch', this.branch);
   }
 
   async testConnection() {
-    if (!this.isConfigured()) return { success: false, message: 'PAT Token missing or invalid.' };
+    if (!this.isConfigured()) return { success: false, message: 'Please enter a valid GitHub Personal Access Token.' };
 
     try {
       const response = await fetch(`https://api.github.com/repos/${this.repo}`, {
@@ -38,16 +39,21 @@ class GitHubSync {
         const data = await response.json();
         return { success: true, isPrivate: data.private, name: data.full_name };
       } else {
-        const err = await response.json();
-        return { success: false, message: err.message || 'Access denied' };
+        const err = await response.json().catch(() => ({}));
+        if (response.status === 404) {
+          return { success: false, message: '404 Not Found: Check repo name or make sure token has `repo` scope.' };
+        } else if (response.status === 401) {
+          return { success: false, message: '401 Unauthorized: Invalid or expired PAT token.' };
+        }
+        return { success: false, message: err.message || `HTTP Error ${response.status}` };
       }
     } catch (e) {
-      return { success: false, message: 'Network error or invalid repo endpoint.' };
+      return { success: false, message: 'Network connection failed.' };
     }
   }
 
   /**
-   * Directly scans Abrarkhangg/Officeletters for all PDF and Image files
+   * Scans Abrarkhangg/Officeletters for all PDF and Image files
    */
   async fetchAllRepoFiles() {
     if (!this.isConfigured()) return [];
@@ -79,7 +85,6 @@ class GitHubSync {
               if (!processedPaths.has(item.path)) {
                 processedPaths.add(item.path);
 
-                // Fetch raw base64 data for image/pdf rendering
                 let fileDataUrl = item.download_url;
                 try {
                   const rawRes = await fetch(item.url, {
@@ -98,12 +103,12 @@ class GitHubSync {
 
                 const cleanTitle = item.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
                 discoveredDocs.push({
-                  id: 'gh_' + item.sha.substring(0, 12),
+                  id: 'gh_' + (item.sha ? item.sha.substring(0, 12) : Date.now()),
                   title: cleanTitle,
                   letterDate: new Date().toISOString().split('T')[0],
                   createdAt: new Date().toISOString(),
                   folderId: 'official',
-                  tags: ['GitHubFile', ext.toUpperCase()],
+                  tags: ['GitHub', ext.toUpperCase()],
                   notes: `File in repository: ${item.path}`,
                   fileType: ext === 'pdf' ? 'pdf' : 'image',
                   fileName: item.name,
@@ -121,14 +126,10 @@ class GitHubSync {
       }
     };
 
-    // Scan root directory and letters subfolder
     await scanDirectory('');
     return discoveredDocs;
   }
 
-  /**
-   * Uploads a file to GitHub repository
-   */
   async uploadFile(path, base64Content, commitMessage = 'Add office letter document') {
     if (!this.isConfigured()) throw new Error('GitHub PAT Token not configured');
 
@@ -168,13 +169,9 @@ class GitHubSync {
       throw new Error(errorData.message || 'Failed to upload to GitHub');
     }
 
-    const result = await res.json();
-    return result;
+    return await res.json();
   }
 
-  /**
-   * Directly DELETES a file from GitHub repository
-   */
   async deleteFileFromGitHub(path, sha, commitMessage = 'Delete office letter') {
     if (!this.isConfigured()) return false;
 
@@ -200,9 +197,6 @@ class GitHubSync {
     }
   }
 
-  /**
-   * Syncs metadata index JSON to GitHub
-   */
   async syncMetadata(documentsList, foldersList) {
     if (!this.isConfigured()) return;
     const indexData = {
@@ -230,13 +224,9 @@ class GitHubSync {
     await this.uploadFile('documents-index.json', base64Index, 'Update ShoaibVault letters index');
   }
 
-  /**
-   * Fetches metadata index or auto-discovers repository files
-   */
   async fetchMetadata() {
     if (!this.isConfigured()) return null;
     
-    // First try fetching index JSON
     const url = `https://api.github.com/repos/${this.repo}/contents/documents-index.json?ref=${this.branch}&t=${Date.now()}`;
     let jsonDocs = null;
     let jsonFolders = null;
@@ -257,11 +247,9 @@ class GitHubSync {
       }
     } catch (e) {}
 
-    // Auto-discover all files directly from Abrarkhangg/Officeletters
     const repoFiles = await this.fetchAllRepoFiles();
 
     if (jsonDocs && Array.isArray(jsonDocs)) {
-      // Merge index with repo files so no file is missed
       const mergedMap = new Map();
       jsonDocs.forEach(d => mergedMap.set(d.fileName, d));
       repoFiles.forEach(rf => {

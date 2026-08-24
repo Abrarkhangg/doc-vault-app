@@ -47,7 +47,6 @@ class DocumentVaultApp {
     const lockSubtitle = document.getElementById('lock-subtitle');
     const unlockBtn = document.getElementById('unlock-btn');
 
-    // Strict Lockout: App stays hidden until PIN is verified
     mainApp.style.display = 'none';
     lockScreen.style.display = 'flex';
 
@@ -59,6 +58,23 @@ class DocumentVaultApp {
       lockTitle.textContent = 'Set Master PIN';
       lockSubtitle.textContent = 'Create a 4-digit Security PIN to protect your ShoaibVault';
       unlockBtn.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Set Master PIN';
+    }
+  }
+
+  async loadCloudData() {
+    if (window.githubSync.isConfigured()) {
+      try {
+        const remoteData = await window.githubSync.fetchMetadata();
+        if (remoteData && Array.isArray(remoteData.documents)) {
+          this.documents = remoteData.documents;
+          if (Array.isArray(remoteData.folders) && remoteData.folders.length > 0) {
+            this.folders = remoteData.folders;
+          }
+          this.saveToStorage();
+        }
+      } catch (e) {
+        console.warn('GitHub auto-scan error:', e);
+      }
     }
   }
 
@@ -75,21 +91,7 @@ class DocumentVaultApp {
         unlockBtn.disabled = true;
         unlockBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Scanning files from Abrarkhangg/Officeletters...';
 
-        // Auto-discover & load ALL real files directly from Abrarkhangg/Officeletters
-        if (window.githubSync.isConfigured()) {
-          try {
-            const remoteData = await window.githubSync.fetchMetadata();
-            if (remoteData && Array.isArray(remoteData.documents)) {
-              this.documents = remoteData.documents;
-              if (Array.isArray(remoteData.folders) && remoteData.folders.length > 0) {
-                this.folders = remoteData.folders;
-              }
-              this.saveToStorage();
-            }
-          } catch (e) {
-            console.warn('GitHub auto-scan error on startup:', e);
-          }
-        }
+        await this.loadCloudData();
 
         document.getElementById('lock-screen').style.display = 'none';
         document.getElementById('app').style.display = 'flex';
@@ -97,7 +99,6 @@ class DocumentVaultApp {
         unlockBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Vault';
         input.value = '';
         
-        // Render UI with live scanned GitHub files
         this.renderFolders();
         this.renderView();
         this.updateStats();
@@ -369,8 +370,8 @@ class DocumentVaultApp {
 
     // GitHub Connection Test & Remote Scan Trigger
     document.getElementById('btn-test-gh').addEventListener('click', async () => {
-      const token = document.getElementById('gh-token').value;
-      const repo = document.getElementById('gh-repo').value || 'Abrarkhangg/Officeletters';
+      const token = document.getElementById('gh-token').value.trim();
+      const repo = document.getElementById('gh-repo').value.trim() || 'Abrarkhangg/Officeletters';
       window.githubSync.saveCredentials(token, repo);
 
       const resDiv = document.getElementById('gh-test-result');
@@ -382,17 +383,13 @@ class DocumentVaultApp {
         resDiv.innerHTML = `<span style="color: var(--accent-teal); font-weight:600;"><i class="fa-solid fa-check-circle"></i> Connected to ${res.name} (${res.isPrivate ? 'Private Repo' : 'Public Repo'})</span>`;
         this.updateSyncBadge();
 
-        try {
-          const remoteData = await window.githubSync.fetchMetadata();
-          if (remoteData && Array.isArray(remoteData.documents)) {
-            this.documents = remoteData.documents;
-            this.saveToStorage();
-            this.renderDocuments();
-            this.updateStats();
-          }
-        } catch (err) {}
+        await this.loadCloudData();
+        this.renderFolders();
+        this.renderView();
+        this.updateStats();
+        this.showToast('Connected & Live Files Loaded!');
       } else {
-        resDiv.innerHTML = `<span style="color: var(--accent-rose); font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${res.message}</span>`;
+        resDiv.innerHTML = `<span style="color: var(--accent-rose); font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> ${res.message}</span>`;
       }
     });
 
@@ -588,7 +585,6 @@ class DocumentVaultApp {
     const folder = this.folders.find(f => f.id === folderId);
     const folderName = folder ? folder.name : 'Folder';
 
-    // Delete documents inside folder directly from GitHub repo if sha/path available
     const docsToDelete = this.documents.filter(d => d.folderId === folderId);
     for (const doc of docsToDelete) {
       if (doc.ghPath && doc.sha) {
@@ -944,7 +940,6 @@ ${doc.tags.length > 0 ? 'Tags: #' + doc.tags.join(' #') : ''}`;
       const doc = this.documents.find(d => d.id === id);
       const title = doc ? doc.title : 'Letter';
 
-      // Physically delete file from GitHub repository if path/sha present
       if (doc && doc.ghPath && doc.sha) {
         await window.githubSync.deleteFileFromGitHub(doc.ghPath, doc.sha);
       }
