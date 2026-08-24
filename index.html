@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Office Document Vault | Free Online Letter Storage</title>
+  <meta name="description" content="Secure, searchable, 100% free document vault for office letters, scanned PDFs, and images with private GitHub storage integration.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+  <!-- Security Lock Overlay -->
+  <div id="lock-screen" style="display: none;">
+    <div class="pin-box">
+      <div class="brand-icon" style="margin: 0 auto 1rem; width: 50px; height: 50px; font-size: 1.5rem;">
+        <i class="fa-solid fa-vault"></i>
+      </div>
+      <h2 style="font-family: 'Outfit', sans-serif; margin-bottom: 0.5rem;">Document Vault</h2>
+      <p style="color: var(--text-muted); font-size: 0.85rem;">Enter your PIN to access office letters</p>
+      <input type="password" id="pin-input" class="form-control pin-input" maxlength="4" placeholder="••••">
+      <button id="unlock-btn" class="btn-primary" style="width: 100%; justify-content: center;">
+        <i class="fa-solid fa-lock-open"></i> Unlock Vault
+      </button>
+      <p id="pin-error" style="color: var(--accent-rose); font-size: 0.8rem; margin-top: 0.75rem; display: none;">Invalid PIN. Try again.</p>
+    </div>
+  </div>
+
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-folder-closed"></i>
+        </div>
+        <div>
+          <div class="brand-title">DocVault</div>
+          <div class="brand-subtitle">Office Letters Manager</div>
+        </div>
+      </div>
+
+      <!-- Main Navigation & Folders -->
+      <div class="nav-section">
+        <div class="section-label">
+          <span>Folders & Categories</span>
+          <button class="add-folder-btn" id="btn-add-folder" title="Create New Folder">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+        <ul class="folder-list" id="folder-list">
+          <!-- Folder items rendered dynamically -->
+        </ul>
+      </div>
+
+      <!-- Sync Status & Settings Footer -->
+      <div class="sidebar-footer">
+        <div class="sync-card">
+          <div class="sync-status">
+            <div class="status-dot" id="sync-dot"></div>
+            <span id="sync-status-text">Local Storage Only</span>
+          </div>
+          <i class="fa-solid fa-cloud-arrow-up" style="color: var(--text-dim);"></i>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-sidebar" id="btn-settings" style="flex: 1;">
+            <i class="fa-solid fa-gear"></i> Settings
+          </button>
+          <button class="btn-sidebar" id="btn-lock" style="width: 40px;" title="Lock Vault">
+            <i class="fa-solid fa-lock"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="search-input" placeholder="Search letters by name, tag, or notes...">
+          <button class="clear-search" id="clear-search-btn">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="header-actions">
+          <button class="btn-primary" id="btn-open-upload">
+            <i class="fa-solid fa-file-circle-plus"></i> Add New Letter
+          </button>
+        </div>
+      </header>
+
+      <!-- Dashboard Body -->
+      <div class="dashboard-body">
+        <!-- Stats Summary -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Total Documents</div>
+              <div class="stat-value" id="stat-total">0</div>
+            </div>
+            <div class="stat-icon-wrapper icon-purple">
+              <i class="fa-solid fa-file-lines"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Categories/Folders</div>
+              <div class="stat-value" id="stat-folders">0</div>
+            </div>
+            <div class="stat-icon-wrapper icon-teal">
+              <i class="fa-solid fa-folder-tree"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">PDF Letters</div>
+              <div class="stat-value" id="stat-pdfs">0</div>
+            </div>
+            <div class="stat-icon-wrapper icon-rose">
+              <i class="fa-solid fa-file-pdf"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div>
+              <div class="stat-title">Scanned Images</div>
+              <div class="stat-value" id="stat-images">0</div>
+            </div>
+            <div class="stat-icon-wrapper icon-amber">
+              <i class="fa-solid fa-file-image"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter & Sorting Controls Bar -->
+        <div class="controls-bar">
+          <div class="filter-group">
+            <button class="filter-pill active" data-type="all">All Files</button>
+            <button class="filter-pill" data-type="pdf">PDF Letters</button>
+            <button class="filter-pill" data-type="image">Images</button>
+          </div>
+
+          <div class="sort-and-view">
+            <select class="sort-select" id="sort-select">
+              <option value="date-desc">Letter Date: Newest First</option>
+              <option value="date-asc">Letter Date: Oldest First</option>
+              <option value="name-asc">Title: A to Z</option>
+              <option value="name-desc">Title: Z to A</option>
+              <option value="created-desc">Upload Date: Recent First</option>
+            </select>
+
+            <div class="view-toggle">
+              <button class="view-btn active" id="view-grid-btn" title="Grid View">
+                <i class="fa-solid fa-border-all"></i>
+              </button>
+              <button class="view-btn" id="view-list-btn" title="List View">
+                <i class="fa-solid fa-list"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Documents Container -->
+        <div id="documents-container" class="documents-grid">
+          <!-- Document Cards will be rendered dynamically -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="empty-state" style="display: none;">
+          <i class="fa-solid fa-folder-open empty-icon"></i>
+          <h3>No documents found</h3>
+          <p style="color: var(--text-muted); max-width: 400px; font-size: 0.9rem;">
+            Upload your office letters in PDF or Scanned Image format to keep them organized and accessible anywhere.
+          </p>
+          <button class="btn-primary" id="btn-empty-upload" style="margin-top: 0.5rem;">
+            <i class="fa-solid fa-plus"></i> Upload Your First Letter
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="modal-overlay" id="upload-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-cloud-arrow-up" style="color: var(--accent-primary);"></i> Upload Office Letter</h3>
+        <button class="close-modal" class="modal-close-btn">&times;</button>
+      </div>
+      <form id="upload-form">
+        <div class="modal-body">
+          <div class="dropzone" id="dropzone">
+            <i class="fa-solid fa-file-circle-plus" style="font-size: 2.5rem; color: var(--accent-primary); margin-bottom: 0.5rem;"></i>
+            <p style="font-weight: 600; margin-bottom: 0.25rem;">Drag & drop letter PDF or Image here</p>
+            <p style="color: var(--text-dim); font-size: 0.8rem;">Supports PDF, JPG, PNG, WEBP files</p>
+            <input type="file" id="file-input" accept="application/pdf,image/*" style="display: none;" required>
+            <div id="selected-file-info" style="margin-top: 0.75rem; font-weight: 600; color: var(--accent-teal); display: none;"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="doc-title">Letter Title / Subject *</label>
+            <input type="text" id="doc-title" class="form-control" placeholder="e.g. Appointment Letter - Govt Ministry" required>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+              <label for="doc-folder">Folder / Category</label>
+              <select id="doc-folder" class="form-control">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="doc-date">Letter Official Date *</label>
+              <input type="date" id="doc-date" class="form-control" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="doc-tags">Tags (comma separated)</label>
+            <input type="text" id="doc-tags" class="form-control" placeholder="e.g. Urgent, Official, Salary, 2026">
+          </div>
+
+          <div class="form-group">
+            <label for="doc-notes">Notes / Remarks</label>
+            <textarea id="doc-notes" class="form-control" rows="2" placeholder="Optional letter details or reference numbers..."></textarea>
+          </div>
+        </div>
+
+        <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-glass); display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn-sidebar modal-close-btn" style="width: auto; padding: 0.65rem 1.25rem;">Cancel</button>
+          <button type="submit" class="btn-primary" id="btn-save-doc">
+            <i class="fa-solid fa-check"></i> Save Letter
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Document Viewer / Preview Modal -->
+  <div class="modal-overlay" id="viewer-modal">
+    <div class="modal-card viewer-modal-card">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="viewer-title">Letter Preview</h3>
+          <div style="font-size: 0.75rem; color: var(--text-dim);" id="viewer-subtitle">Date: 2026-08-24</div>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button class="btn-icon-sm" id="btn-viewer-print" title="Print Letter">
+            <i class="fa-solid fa-print"></i>
+          </button>
+          <button class="btn-icon-sm" id="btn-viewer-download" title="Download File">
+            <i class="fa-solid fa-download"></i>
+          </button>
+          <button class="close-modal modal-close-btn">&times;</button>
+        </div>
+      </div>
+
+      <div class="viewer-content" id="viewer-container">
+        <!-- Dynamic Image or PDF viewer iframe -->
+      </div>
+
+      <div class="viewer-toolbar" id="image-toolbar" style="display: none;">
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-icon-sm" id="btn-zoom-in" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+          <button class="btn-icon-sm" id="btn-zoom-out" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+          <button class="btn-icon-sm" id="btn-rotate" title="Rotate 90°"><i class="fa-solid fa-rotate-right"></i></button>
+          <button class="btn-icon-sm" id="btn-reset-zoom" title="Reset Zoom"><i class="fa-solid fa-arrow-rotate-left"></i></button>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted);" id="zoom-level-text">100%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-gear" style="color: var(--accent-primary);"></i> Settings & Cloud Storage</h3>
+        <button class="close-modal modal-close-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- GitHub Configuration Section -->
+        <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 1.25rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+            <i class="fa-brands fa-github" style="font-size: 1.5rem; color: #fff;"></i>
+            <div>
+              <div style="font-weight: 700; font-size: 0.95rem;">GitHub Private Repo Backend</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Sync all your office letters online 100% free</div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0.75rem;">
+            <label for="gh-token">GitHub Personal Access Token (PAT)</label>
+            <input type="password" id="gh-token" class="form-control" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+            <span style="font-size: 0.7rem; color: var(--text-dim);">Token requires `repo` scope to read/write files</span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label for="gh-repo">GitHub Repository (username/reponame)</label>
+            <input type="text" id="gh-repo" class="form-control" placeholder="e.g. shoaib/my-office-letters">
+          </div>
+
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn-sidebar" id="btn-test-gh" style="flex: 1;">
+              <i class="fa-solid fa-plug"></i> Test Connection
+            </button>
+            <button class="btn-sidebar" id="btn-sync-gh" style="flex: 1; border-color: var(--accent-primary); color: #a5b4fc;">
+              <i class="fa-solid fa-arrows-rotate"></i> Sync Files Now
+            </button>
+          </div>
+          <div id="gh-test-result" style="font-size: 0.8rem; margin-top: 0.5rem; display: none;"></div>
+        </div>
+
+        <!-- Security PIN Setup -->
+        <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 1.25rem;">
+          <div style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.5rem;">
+            <i class="fa-solid fa-lock" style="color: var(--accent-teal);"></i> Security PIN Code
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+            Set a 4-digit PIN code to lock your document vault when inactive.
+          </p>
+
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <input type="password" id="new-pin" class="form-control" maxlength="4" placeholder="4-digit PIN" style="max-width: 140px; text-align: center;">
+            <button class="btn-sidebar" id="btn-save-pin" style="width: auto; padding: 0.65rem 1rem;">
+              Set / Change PIN
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-glass); display: flex; justify-content: flex-end;">
+        <button type="button" class="btn-primary modal-close-btn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Folder Modal -->
+  <div class="modal-overlay" id="folder-modal">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Create New Folder</h3>
+        <button class="close-modal modal-close-btn">&times;</button>
+      </div>
+      <form id="folder-form">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="folder-name-input">Folder Name</label>
+            <input type="text" id="folder-name-input" class="form-control" placeholder="e.g. HR & Salary Notices" required>
+          </div>
+        </div>
+        <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-glass); display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn-sidebar modal-close-btn" style="width: auto;">Cancel</button>
+          <button type="submit" class="btn-primary">Create Folder</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="github-api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
