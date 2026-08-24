@@ -31,7 +31,7 @@ class DocumentVaultApp {
   }
 
   init() {
-    // Only inject demo data once on first install
+    // Only inject demo data once on very first install
     if (!this.isInitialized && this.documents.length === 0) {
       this.injectDemoData();
       localStorage.setItem('docvault_initialized', 'true');
@@ -39,10 +39,6 @@ class DocumentVaultApp {
 
     this.setupEventListeners();
     this.checkSecurityLock();
-    this.renderFolders();
-    this.renderView();
-    this.updateStats();
-    this.updateSyncBadge();
   }
 
   injectDemoData() {
@@ -100,11 +96,14 @@ class DocumentVaultApp {
   checkSecurityLock() {
     const pin = localStorage.getItem('docvault_pin');
     const lockScreen = document.getElementById('lock-screen');
+    const mainApp = document.getElementById('app');
     const lockTitle = document.getElementById('lock-title');
     const lockSubtitle = document.getElementById('lock-subtitle');
     const unlockBtn = document.getElementById('unlock-btn');
 
-    lockScreen.style.display = 'flex'; // Mandatory lock screen on app start
+    // Strict Lockout: Hide app completely until correct PIN is verified
+    mainApp.style.display = 'none';
+    lockScreen.style.display = 'flex';
 
     if (pin) {
       lockTitle.textContent = 'ShoaibVault';
@@ -112,7 +111,7 @@ class DocumentVaultApp {
       unlockBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Vault';
     } else {
       lockTitle.textContent = 'Set Master PIN';
-      lockSubtitle.textContent = 'Create a 4-digit Security PIN to lock & protect your Vault';
+      lockSubtitle.textContent = 'Create a 4-digit Security PIN to protect your ShoaibVault';
       unlockBtn.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Set Master PIN';
     }
   }
@@ -126,8 +125,15 @@ class DocumentVaultApp {
     if (savedPin) {
       if (pinVal === savedPin) {
         document.getElementById('lock-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
         errDiv.style.display = 'none';
         input.value = '';
+        
+        // Render UI after successful PIN verification
+        this.renderFolders();
+        this.renderView();
+        this.updateStats();
+        this.updateSyncBadge();
       } else {
         errDiv.textContent = 'Invalid PIN code. Try again.';
         errDiv.style.display = 'block';
@@ -136,8 +142,14 @@ class DocumentVaultApp {
       if (pinVal.length === 4 && /^\d+$/.test(pinVal)) {
         localStorage.setItem('docvault_pin', pinVal);
         document.getElementById('lock-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
         errDiv.style.display = 'none';
         input.value = '';
+
+        this.renderFolders();
+        this.renderView();
+        this.updateStats();
+        this.updateSyncBadge();
         this.showToast('Master PIN set & Vault unlocked!');
       } else {
         errDiv.textContent = 'PIN code must be exactly 4 digits.';
@@ -355,6 +367,28 @@ class DocumentVaultApp {
       document.getElementById('gh-repo').value = window.githubSync.repo;
       document.getElementById('new-pin').value = localStorage.getItem('docvault_pin') || '';
       this.openModal('settings-modal');
+    });
+
+    // Reset & Wipe All Demo Data Trigger
+    document.getElementById('btn-wipe-data').addEventListener('click', async () => {
+      if (confirm('Are you sure you want to delete all demo letters? This will clean up your vault.')) {
+        this.documents = [];
+        this.saveToStorage();
+        localStorage.setItem('docvault_initialized', 'true');
+
+        if (window.githubSync.isConfigured()) {
+          try {
+            await window.githubSync.syncMetadata(this.documents, this.folders);
+          } catch (e) {
+            console.warn('GitHub wipe sync error:', e);
+          }
+        }
+
+        this.renderDocuments();
+        this.updateStats();
+        this.closeModal('settings-modal');
+        this.showToast('All demo letters cleared.');
+      }
     });
 
     // GitHub Connection Test & Remote Sync
